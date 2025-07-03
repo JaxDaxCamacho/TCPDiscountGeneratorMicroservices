@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+﻿using DiscountGeneratorService.Interfaces;
+using System.Net.Sockets;
 using TCPLibrary;
 
 namespace DiscountGeneratorService
@@ -16,10 +17,13 @@ namespace DiscountGeneratorService
 
         int _dataBufferSize;
 
-        public ServerTCP(int id, int dataBufferSize)
+        readonly IDiscountGenerator _discountGenerator;
+
+        public ServerTCP(int id, int dataBufferSize, IDiscountGenerator discountGenerator)
         {
             _id = id;
             _dataBufferSize = dataBufferSize;
+            _discountGenerator = discountGenerator;
         }
 
         public async Task ConnectAsync(TcpClient _socket,int clientId, CancellationToken ct)
@@ -35,7 +39,7 @@ namespace DiscountGeneratorService
 
             _stream.BeginRead(_receiveBuffer, 0, _dataBufferSize, ReceiveCallback, null);
 
-            await ServiceSend.HandshakeAsync(_id, clientId, ct);
+            await _discountGenerator.HandshakeAsync(_id, clientId, ct);
         }
 
         public void Disconnect()
@@ -123,7 +127,15 @@ namespace DiscountGeneratorService
                 using (Packet packet = new Packet(packetBytes))
                 {
                     int packetId = packet.ReadInt();
-                    EPSDiscountGenerator.packetHandlers[packetId](_id, packet, cts.Token);
+                    switch (packetId)
+                    {
+                        case (int)RequestPacket.Generate:
+                             _discountGenerator.RequestHandler.GenerateAsync(_id, packet, cts.Token);
+                            break;
+                        case (int)RequestPacket.UseCode:
+                            _discountGenerator.RequestHandler.UseCodeAsync(_id, packet, cts.Token);
+                            break;
+                    }
                 }
 
                 packetLength = 0;

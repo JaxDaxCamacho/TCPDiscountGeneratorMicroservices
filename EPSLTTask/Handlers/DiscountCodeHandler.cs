@@ -1,4 +1,5 @@
 ﻿
+using DiscountGeneratorService.Interfaces;
 using System.Text;
 using System.Threading;
 using TCPLibrary;
@@ -9,7 +10,16 @@ namespace DiscountGeneratorService.Handlers
     {
         const int MaxCodes = 2000;
 
-        public static async Task GenerateAsync(int _fromClient, Packet packet, CancellationToken ct)
+        readonly IFileStorageHandler _fileStorageHandler;
+        readonly IDiscountGenerator _discountGenerator;
+
+        public DiscountCodeHandler(IDiscountGenerator discountgenerator, IFileStorageHandler fileStorageHandler )
+        {
+            _fileStorageHandler = fileStorageHandler;
+            _discountGenerator = discountgenerator;
+        }
+
+        public async Task GenerateAsync(int _fromClient, Packet packet, CancellationToken ct)
         {
             try
             {
@@ -38,16 +48,16 @@ namespace DiscountGeneratorService.Handlers
 
                 await Task.WhenAll(tasks);
 
-                await ServiceSend.SuccessAsync(_fromClient, ct);
+                await _discountGenerator.SuccessAsync(_fromClient, ct);
             }
             catch (OperationCanceledException)
             {
                 Console.WriteLine("Operation was canceled.");
-                await ServiceSend.ErrorAsync(_fromClient,"Operation Canceled", ct);
+                await _discountGenerator.ErrorAsync(_fromClient,"Operation Canceled", ct);
             }
         }
 
-        static async Task<string> GenerateCode(int codeLength)
+        async Task<string> GenerateCode(int codeLength)
         {
             const string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
             var random = new Random();
@@ -60,38 +70,40 @@ namespace DiscountGeneratorService.Handlers
 
             var resultStringified = result.ToString();
 
-            if(EPSDiscountGenerator.Codes.TryGetValue(resultStringified, out var code))
+            if(_discountGenerator.GetCodesInMemory().TryGetValue(resultStringified, out var active))
             {
                return await GenerateCode(codeLength); 
             }
             else
             {
-                await EPSDiscountGenerator.fileStorageHandler.AddCodeFileToBeInserted(resultStringified);
+                await _fileStorageHandler.AddCodeFileToBeInserted(resultStringified);
+                _discountGenerator.AddCodeToMemory(resultStringified);
 
                 return resultStringified;
             }
         }
 
-        public static async Task UseCodeAsync(int _fromClient, Packet packet, CancellationToken ct)
+        public async Task UseCodeAsync(int _fromClient, Packet packet, CancellationToken ct)
         {
             var codeToActivate = packet.ReadString();
             Console.WriteLine($"Activating code {codeToActivate}");
-            if (EPSDiscountGenerator.Codes.TryGetValue(codeToActivate, out var isActive))
+            if (_discountGenerator.GetCodesInMemory().TryGetValue(codeToActivate, out var isActive))
             {
                 if(isActive)
                 {
                     //Activation Code Logic
-                    await EPSDiscountGenerator.fileStorageHandler.AddCodeFileToBeActivated(codeToActivate);
-                    await ServiceSend.SuccessAsync(_fromClient, ct);
+                    await _fileStorageHandler.AddCodeFileToBeActivated(codeToActivate);
+                    _discountGenerator.UpdateCodesInMemory(codeToActivate, true);
+                    await _discountGenerator.SuccessAsync(_fromClient, ct);
                 }
                 else
                 {
-                    await ServiceSend.ErrorAsync(_fromClient, "This Code was already used", ct);
+                    await _discountGenerator.ErrorAsync(_fromClient, "This Code was already used", ct);
                 }
             }
             else
             {
-                await ServiceSend.ErrorAsync(_fromClient, "This Code doesn't exist or is pending activation", ct);
+                await _discountGenerator.ErrorAsync(_fromClient, "This Code doesn't exist or is pending activation", ct);
             }
         }
     }

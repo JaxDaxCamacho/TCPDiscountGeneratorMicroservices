@@ -1,4 +1,5 @@
 ﻿
+using DiscountGeneratorService.Interfaces;
 using TCPLibrary;
 
 namespace DiscountGeneratorService
@@ -11,10 +12,10 @@ namespace DiscountGeneratorService
         public ServerTCP _tcp;
 
 
-        public Client(int clientId)
+        public Client(int clientId, IDiscountGenerator discountGenerator)
         {
             _clientId = clientId;
-            _tcp = new ServerTCP(clientId, dataBufferSize);
+            _tcp = new ServerTCP(clientId, dataBufferSize, discountGenerator);
         }
     }
 }

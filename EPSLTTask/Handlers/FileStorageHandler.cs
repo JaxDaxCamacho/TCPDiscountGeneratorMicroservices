@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DiscountGeneratorService.Interfaces;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,21 +9,21 @@ using System.Threading.Tasks;
 
 namespace DiscountGeneratorService.Handlers
 {
-    public class FileStorageHandler
+    public class FileStorageHandler : IFileStorageHandler
     {
         string _path;
         const string pendingCodesDir = "CodesToBeInserted";
         const string pendingActivationsDir = "CodesToBeActivated";
         const string activeText = "ActiveCodes.txt";
         const string usedText = "UsedCodes.txt";
-        const int readCap = 300;
-        public FileStorageHandler(string path) 
+        
+        public FileStorageHandler() 
         {
-            _path = path;
-            var pendingCodesPath = $"{path}/{pendingCodesDir}";
+            _path = Directory.GetCurrentDirectory();
+            var pendingCodesPath = $"{_path}/{pendingCodesDir}";
             if (!Directory.Exists(pendingCodesPath)) Directory.CreateDirectory(pendingCodesPath);
 
-            var pendingActivationsPath = $"{path}/{pendingActivationsDir}";
+            var pendingActivationsPath = $"{_path}/{pendingActivationsDir}";
             if (!Directory.Exists(pendingActivationsPath)) Directory.CreateDirectory(pendingActivationsPath);
         }
 
@@ -34,7 +35,6 @@ namespace DiscountGeneratorService.Handlers
             // Write the content to the file
             await File.WriteAllTextAsync(fullPath, code, Encoding.UTF8);
 
-            EPSDiscountGenerator.Codes.Add(code, true);
             Console.WriteLine($"Code pending: {code}");
         }
 
@@ -46,7 +46,6 @@ namespace DiscountGeneratorService.Handlers
             // Write the content to the file
             await File.WriteAllTextAsync(fullPath, code, Encoding.UTF8);
 
-            EPSDiscountGenerator.Codes[code] = false;
             Console.WriteLine($"Code pending activation: {code}");
         }
 
@@ -93,7 +92,7 @@ namespace DiscountGeneratorService.Handlers
             return readCodes;
         }
 
-        public List<string> InsertCodesIntoStorage(int forceCap = readCap)
+        public List<string> InsertCodesIntoStorage(int forceCap)
         {
             var codes = Directory.GetFiles(pendingCodesDir);
                         
@@ -133,7 +132,7 @@ namespace DiscountGeneratorService.Handlers
             return codesToProcess;
         }
 
-        public List<string> ProcessCodeActivations(int forceCap = readCap)
+        public List<string> ProcessCodeActivations(int forceCap)
         {
             var files = Directory.GetFiles(pendingActivationsDir);
 

@@ -1,60 +1,87 @@
 ﻿using DiscountGeneratorService.Handlers;
+using DiscountGeneratorService.Interfaces;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection.Emit;
 using TCPLibrary;
 
 namespace DiscountGeneratorService
 {
-    static public class EPSDiscountGenerator
+    public class EPSDiscountGenerator : IDiscountGenerator
     {
-        public static int Port { get; set; }
-        public static TcpListener TcpListener { get; set; }
+        int Port;
+
+        public TcpListener TcpListener;
 
         public delegate void PacketHandler(int fromClient, Packet packet);
 
-        public static Dictionary<int, Func<int, Packet, CancellationToken, Task>> packetHandlers;
+        public Dictionary<int, Client> Clients;
 
-        public static Dictionary<int, Client> clients = new Dictionary<int, Client>();
+        public Dictionary<string, bool> Codes;
 
-        public static string path = Directory.GetCurrentDirectory();
+        readonly IFileStorageHandler _fileStorageHandler;
 
-        public static Dictionary<string, bool> Codes;
+        int CallTimeout = 360;
 
-        public static FileStorageHandler fileStorageHandler;
+        int clientConnectCounter = 0;
 
-        public static int CallTimeout = 360;
+        public DiscountCodeHandler RequestHandler { get; }
 
-        public static int clientConnectCounter = 0;
+        public EPSDiscountGenerator(IFileStorageHandler fileStorageHandler)
+        {
+            _fileStorageHandler = fileStorageHandler;
+            Codes = new Dictionary<string, bool>();
+            Clients = new Dictionary<int, Client>();
+            RequestHandler = new DiscountCodeHandler(this, _fileStorageHandler);
 
-        public static void Start(int port)
+            Console.WriteLine($"Service initialized...");
+        }
+
+        public void Start(int port)
         {
             Port = port;
 
             Console.WriteLine($"Starting EPSDiscountGenerator on {Directory.GetCurrentDirectory()}...");
 
-            InitializePacketMapping();
-
-            ClearTempData();
-
-            fileStorageHandler = new FileStorageHandler(path);
-            clients = new Dictionary<int, Client>();
             TcpListener = new TcpListener(IPAddress.Any, Port);
             TcpListener.Start();
             TcpListener.BeginAcceptTcpClient(new AsyncCallback(TcpConnectCallback), null);
 
-            Codes = fileStorageHandler.ReadStoredCodesToMemory();
+            Codes = _fileStorageHandler.ReadStoredCodesToMemory();
 
             Console.WriteLine($"EPSDiscountGenerator Service hosted on Port {Port}.");
         }
 
-        public static void Loop()
+        public Dictionary<string, bool> GetCodesInMemory()
         {
-            var addedCodes = fileStorageHandler.InsertCodesIntoStorage();
+            return Codes;
+        }
+
+        public void UpdateCodesInMemory(string code, bool active)
+        {
+            if(Codes.TryGetValue(code, out var currentActiveState))
+            {
+                Codes[code] = active;
+            }
+            else
+            {
+                Console.WriteLine($"the code {code} doesn't exist");
+            }
+        }
+
+        public void AddCodeToMemory(string code)
+        {
+            Codes[code] = true;
+        }
+
+        public void Loop()
+        {
+            var addedCodes = _fileStorageHandler.InsertCodesIntoStorage();
             foreach(var code in addedCodes)
             {
                 Codes[code] = true;
             }
-            var usedCodes = fileStorageHandler.ProcessCodeActivations();
+            var usedCodes = _fileStorageHandler.ProcessCodeActivations();
             foreach (var code in usedCodes)
             {
                 if (Codes.ContainsKey(code))
@@ -65,49 +92,80 @@ namespace DiscountGeneratorService
             }
         }
 
-        static void TcpConnectCallback(IAsyncResult result)
+        void TcpConnectCallback(IAsyncResult result)
         {
             TcpClient client = TcpListener.EndAcceptTcpClient(result);
             TcpListener.BeginAcceptTcpClient(new AsyncCallback(TcpConnectCallback), null);  
             Console.WriteLine($"Incoming connection from {client.Client.RemoteEndPoint}...");
 
             clientConnectCounter++;
-            clients.Add(clientConnectCounter, new Client(clientConnectCounter));
+            Clients.Add(clientConnectCounter, new Client(clientConnectCounter, this));
 
             var cts = new CancellationTokenSource();
 
-            var task = clients[clientConnectCounter]._tcp.ConnectAsync(client, clientConnectCounter, cts.Token);
+            var task = Clients[clientConnectCounter]._tcp.ConnectAsync(client, clientConnectCounter, cts.Token);
 
             Task.Delay(CallTimeout).ContinueWith(_ => cts.Cancel());
         }
 
-        private static void ClearTempData()
+        async Task SendTCPData(int toClient, Packet packet, CancellationToken ct)
         {
-            var TempPath = $"{path}/Temp";
-            if (!Directory.Exists(TempPath)) Directory.CreateDirectory(TempPath);
+            packet.WriteLength();
+            await Clients[toClient]._tcp.SendDataAsync(packet, ct);
+        }
 
-            DirectoryInfo di = new DirectoryInfo(TempPath);
-
-
-            foreach (FileInfo file in di.GetFiles())
+        public async Task HandshakeAsync(int toClient, int clientId, CancellationToken ct)
+        {
+            using (Packet packet = new Packet((int)ResponsePacket.Handshake))
             {
-                file.Delete();
-            }
-            foreach (DirectoryInfo dir in di.GetDirectories())
-            {
-                dir.Delete(true);
+                packet.Write(clientId);
+                packet.Write(toClient);
+
+                await SendTCPData(toClient, packet, ct);
             }
         }
 
-        private static void InitializePacketMapping()
+        public async Task GenerateAsync(int toClient, string msg, CancellationToken ct)
         {
-            packetHandlers = new Dictionary<int, Func<int, Packet, CancellationToken, Task>>
+            using (Packet packet = new Packet((int)ResponsePacket.Generate))
             {
-                { (int)RequestPacket.Generate, DiscountCodeHandler.GenerateAsync },
-                { (int)RequestPacket.UseCode, DiscountCodeHandler.UseCodeAsync }
-            };
+                packet.Write(toClient);
 
-            Console.WriteLine($"Service packets initialized...");
+                await SendTCPData(toClient, packet, ct);
+            }
         }
+
+        public async Task UseCodeAsync(int toClient, short discountValue, CancellationToken ct)
+        {
+            using (Packet packet = new Packet((int)ResponsePacket.UseCode))
+            {
+                packet.Write(discountValue);
+                packet.Write(toClient);
+
+                await SendTCPData(toClient, packet, ct);
+            }
+        }
+
+        public async Task SuccessAsync(int toClient, CancellationToken ct)
+        {
+            using (Packet packet = new Packet((int)ResponsePacket.Success))
+            {
+                packet.Write(toClient);
+
+                await SendTCPData(toClient, packet, ct);
+            }
+        }
+
+        public async Task ErrorAsync(int toClient, string errorMsg, CancellationToken ct)
+        {
+            using (Packet packet = new Packet((int)ResponsePacket.Error))
+            {
+                packet.Write(errorMsg);
+                packet.Write(toClient);
+
+                await SendTCPData(toClient, packet, ct);
+            }
+        }
+
     }
 }
