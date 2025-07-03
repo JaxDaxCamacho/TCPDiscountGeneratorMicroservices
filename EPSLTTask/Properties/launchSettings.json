@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "EPSLTTask": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
