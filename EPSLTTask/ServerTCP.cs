@@ -17,6 +17,9 @@ namespace DiscountGeneratorService
 
         int _dataBufferSize;
 
+        const int MaxCodes = 2000;
+
+
         readonly IDiscountGenerator _discountGenerator;
 
         public ServerTCP(int id, int dataBufferSize, IDiscountGenerator discountGenerator)
@@ -130,10 +133,30 @@ namespace DiscountGeneratorService
                     switch (packetId)
                     {
                         case (int)RequestPacket.Generate:
-                             _discountGenerator.RequestHandler.GenerateAsync(_id, packet, cts.Token);
+                            var numberOfCodes = packet.ReadShort();
+                            if (numberOfCodes > MaxCodes)
+                            {
+                                _discountGenerator.ErrorAsync(_id, "Max codes to be generated is 2000", cts.Token);
+                                break;
+                            }
+
+                            var lengthOfCodes = packet.ReadShort();
+                            if (lengthOfCodes != 7 && lengthOfCodes != 8)
+                            {
+                                _discountGenerator.ErrorAsync(_id, "Length of codes can only be 7 or 8", cts.Token);
+                                break;
+                            }
+                            _discountGenerator.RequestHandler.HandleGenerateAsync(_id, numberOfCodes, lengthOfCodes, cts.Token);
                             break;
+
                         case (int)RequestPacket.UseCode:
-                            _discountGenerator.RequestHandler.UseCodeAsync(_id, packet, cts.Token);
+                            var codeToActivate = packet.ReadString();
+                            if (string.IsNullOrEmpty(codeToActivate) || codeToActivate.Length > 8 || codeToActivate.Length < 7)
+                            {
+                                _discountGenerator.ErrorAsync(_id, $"{codeToActivate} is not a valid code", cts.Token);
+                                break;
+                            }
+                            _discountGenerator.RequestHandler.HandleUseCodeAsync(_id, codeToActivate, cts.Token);
                             break;
                     }
                 }

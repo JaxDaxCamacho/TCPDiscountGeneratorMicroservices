@@ -14,8 +14,8 @@ namespace DiscountGeneratorService.Handlers
         string _path;
         const string pendingCodesDir = "CodesToBeInserted";
         const string pendingActivationsDir = "CodesToBeActivated";
-        const string activeText = "ActiveCodes.txt";
-        const string usedText = "UsedCodes.txt";
+        const string activeCodesText = "ActiveCodes.txt";
+        const string usedCodesText = "UsedCodes.txt";
         
         public FileStorageHandler() 
         {
@@ -52,7 +52,7 @@ namespace DiscountGeneratorService.Handlers
         public Dictionary<string, bool> ReadStoredCodesToMemory()
         {
             var readCodes = new Dictionary<string, bool>();
-            if (!File.Exists(activeText))
+            if (!File.Exists(activeCodesText))
             {
                 Console.WriteLine("File not found.");
                 return readCodes;
@@ -65,7 +65,7 @@ namespace DiscountGeneratorService.Handlers
                 InsertCodesIntoStorage(pendingcodes.Length);
             }
 
-            var codes = File.ReadAllLines(activeText);
+            var codes = File.ReadAllLines(activeCodesText);
 
             foreach (var code in codes)
             {
@@ -79,7 +79,7 @@ namespace DiscountGeneratorService.Handlers
                 ProcessCodeActivations(pendingActivations.Length);
             }
 
-            var usedcodes = File.ReadAllLines(usedText);
+            var usedcodes = File.ReadAllLines(usedCodesText);
 
             foreach (var code in usedcodes)
             {
@@ -112,7 +112,7 @@ namespace DiscountGeneratorService.Handlers
                 codesToProcess = codes.Take(forceCap).ToList();
             }
 
-            using var outputStream = new StreamWriter(activeText, append: true, encoding: Encoding.UTF8);
+            using var outputStream = new StreamWriter(activeCodesText, append: true, encoding: Encoding.UTF8);
 
             foreach (var code in codesToProcess)
             {
@@ -128,7 +128,7 @@ namespace DiscountGeneratorService.Handlers
                 File.Delete(file);
             }
 
-            Console.WriteLine($"Processed {codesToProcess.Count} codes into {activeText}");
+            Console.WriteLine($"Processed {codesToProcess.Count} codes into {activeCodesText}");
             return codesToProcess;
         }
 
@@ -152,7 +152,7 @@ namespace DiscountGeneratorService.Handlers
                 codesToActivate = files.Take(forceCap).ToList();
             }
 
-            using var outputStream = new StreamWriter(usedText, append: true, encoding: Encoding.UTF8);
+            using var outputStream = new StreamWriter(usedCodesText, append: true, encoding: Encoding.UTF8);
 
             foreach (var file in files)
             {
@@ -170,6 +170,30 @@ namespace DiscountGeneratorService.Handlers
 
             Console.WriteLine($"Processed {codesToActivate.Count} code activations");
             return codesToActivate;
+        }
+
+        public void ClearAllData()
+        {
+            DirectoryInfo di = new DirectoryInfo($"{_path}/{pendingCodesDir}");
+            foreach (FileInfo file in di.GetFiles())
+            { file.Delete(); }
+
+            DirectoryInfo di2 = new DirectoryInfo($"{_path}/{pendingActivationsDir}");
+            foreach (FileInfo file in di2.GetFiles())
+            { file.Delete(); }
+
+            File.Delete(activeCodesText);
+            File.Delete(usedCodesText);
+        }
+
+        public void ForcePath(string path)
+        {
+            _path = path;
+            var pendingCodesPath = $"{_path}/{pendingCodesDir}";
+            if (!Directory.Exists(pendingCodesPath)) Directory.CreateDirectory(pendingCodesPath);
+
+            var pendingActivationsPath = $"{_path}/{pendingActivationsDir}";
+            if (!Directory.Exists(pendingActivationsPath)) Directory.CreateDirectory(pendingActivationsPath);
         }
     }
 }

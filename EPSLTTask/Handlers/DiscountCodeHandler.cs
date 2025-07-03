@@ -8,7 +8,6 @@ namespace DiscountGeneratorService.Handlers
 {
     public class DiscountCodeHandler
     {
-        const int MaxCodes = 2000;
 
         readonly IFileStorageHandler _fileStorageHandler;
         readonly IDiscountGenerator _discountGenerator;
@@ -19,24 +18,10 @@ namespace DiscountGeneratorService.Handlers
             _discountGenerator = discountgenerator;
         }
 
-        public async Task GenerateAsync(int _fromClient, Packet packet, CancellationToken ct)
+        public async Task HandleGenerateAsync(int _fromClient, short numberOfCodes, short lengthOfCodes, CancellationToken ct)
         {
             try
             {
-                var numberOfCodes = packet.ReadShort();
-                if (numberOfCodes > MaxCodes)
-                {
-                    //Send Error Message
-                    return;
-                }
-
-                var lengthOfCodes = packet.ReadShort();
-                if (lengthOfCodes != 7 && lengthOfCodes != 8)
-                {
-                    //Send Error Message
-                    return;
-                }
-
                 List<Task<string>> tasks = new List<Task<string>>();
 
                 for (var i = 0; i < numberOfCodes; i++)
@@ -83,28 +68,29 @@ namespace DiscountGeneratorService.Handlers
             }
         }
 
-        public async Task UseCodeAsync(int _fromClient, Packet packet, CancellationToken ct)
+        public async Task HandleUseCodeAsync(int _fromClient, string codeToActivate, CancellationToken ct)
         {
-            var codeToActivate = packet.ReadString();
             Console.WriteLine($"Activating code {codeToActivate}");
-            if (_discountGenerator.GetCodesInMemory().TryGetValue(codeToActivate, out var isActive))
-            {
-                if(isActive)
+                if (_discountGenerator.GetCodesInMemory().TryGetValue(codeToActivate, out var isActive))
                 {
-                    //Activation Code Logic
-                    await _fileStorageHandler.AddCodeFileToBeActivated(codeToActivate);
-                    _discountGenerator.UpdateCodesInMemory(codeToActivate, true);
-                    await _discountGenerator.SuccessAsync(_fromClient, ct);
+                    if (isActive)
+                    {
+                        //Activation Code Logic
+                        await _fileStorageHandler.AddCodeFileToBeActivated(codeToActivate);
+                        _discountGenerator.UpdateCodesInMemory(codeToActivate, false);
+                        await _discountGenerator.SuccessAsync(_fromClient, ct);
+                    }
+                    else
+                    {
+                        await _discountGenerator.ErrorAsync(_fromClient, "This Code was already used", ct);
+                        throw new Exception("This Code was already used");
+                    }
                 }
                 else
                 {
-                    await _discountGenerator.ErrorAsync(_fromClient, "This Code was already used", ct);
+                    await _discountGenerator.ErrorAsync(_fromClient, "This Code doesn't exist or is pending activation", ct);
+                    throw new Exception("This Code doesn't exist or is pending activation");
                 }
-            }
-            else
-            {
-                await _discountGenerator.ErrorAsync(_fromClient, "This Code doesn't exist or is pending activation", ct);
-            }
         }
     }
 
