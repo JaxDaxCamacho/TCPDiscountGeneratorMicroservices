@@ -19,7 +19,7 @@ namespace DiscountGeneratorClient
         {
             var commands = new Dictionary<string, Action>
             {
-                { "generate", GenerateRequest },
+                { "generate", GenerateRequest },cd
                 { "activate", ActivateRequest },
                 { "exit", DisconnectGracefully }
             };
