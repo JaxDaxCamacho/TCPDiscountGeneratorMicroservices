@@ -17,20 +17,22 @@ namespace DiscountGeneratorService
 
         public Dictionary<int, Client> Clients;
 
-        public Dictionary<string, bool> Codes;
-
         readonly IFileStorageHandler _fileStorageHandler;
 
         int CallTimeout = 360;
 
-        int clientConnectCounter = 0;
+        int PageSize = 300;
+
+        int ClientConnectCounter = 0;
+
+        List<string> PendingCodes = new List<string>();
+        List<string> PendingActivations = new List<string>();
 
         public DiscountCodeHandler RequestHandler { get; }
 
         public EPSDiscountGenerator(IFileStorageHandler fileStorageHandler)
         {
             _fileStorageHandler = fileStorageHandler;
-            Codes = new Dictionary<string, bool>();
             Clients = new Dictionary<int, Client>();
             RequestHandler = new DiscountCodeHandler(this, _fileStorageHandler);
 
@@ -47,49 +49,45 @@ namespace DiscountGeneratorService
             TcpListener.Start();
             TcpListener.BeginAcceptTcpClient(new AsyncCallback(TcpConnectCallback), null);
 
-            Codes = _fileStorageHandler.ReadStoredCodesToMemory();
 
             Console.WriteLine($"EPSDiscountGenerator Service hosted on Port {Port}.");
         }
 
-        public Dictionary<string, bool> GetCodesInMemory()
+        public void FileStorageLoop()
         {
-            return Codes;
-        }
-
-        public void UpdateCodesInMemory(string code, bool active)
-        {
-            if(Codes.TryGetValue(code, out var currentActiveState))
+            if (PendingCodes.Count > 0)
             {
-                Codes[code] = active;
+                var pageSize = PendingCodes.Count > PageSize ? PageSize : PendingCodes.Count;
+                var codesToAddPage = PendingCodes.TakeLast(pageSize);
+                _fileStorageHandler.SaveCodes(codesToAddPage.ToArray());
+                PendingCodes = PendingCodes.Except(codesToAddPage).ToList();
             }
-            else
-            {
-                Console.WriteLine($"the code {code} doesn't exist");
-            }
-        }
 
-        public void AddCodeToMemory(string code)
-        {
-            Codes[code] = true;
-        }
-
-        public void Loop()
-        {
-            var addedCodes = _fileStorageHandler.InsertCodesIntoStorage();
-            foreach(var code in addedCodes)
+            if (PendingActivations.Count > 0)
             {
-                Codes[code] = true;
-            }
-            var usedCodes = _fileStorageHandler.ProcessCodeActivations();
-            foreach (var code in usedCodes)
-            {
-                if (Codes.ContainsKey(code))
+                var pageSize = PendingActivations.Count > PageSize ? PageSize : PendingActivations.Count;
+                var codesToActivatePage = PendingActivations.TakeLast(pageSize);
+                foreach (string code in codesToActivatePage)
                 {
-                    Codes[code] = false;
-                    Console.WriteLine($"Activated {code}.");
+                    _fileStorageHandler.ActivateCode(code);
                 }
+                PendingActivations = PendingActivations.Except(codesToActivatePage).ToList();
             }
+        }
+
+        public void CommitPendingCode(string code)
+        {
+            PendingCodes.Add(code);
+        }
+
+        public void CommitActivation(string code)
+        {
+            PendingActivations.Add(code);
+        }
+
+        public void CommitPendingCodes(string[] codes)
+        {
+            PendingCodes.AddRange(codes);
         }
 
         void TcpConnectCallback(IAsyncResult result)
@@ -98,12 +96,12 @@ namespace DiscountGeneratorService
             TcpListener.BeginAcceptTcpClient(new AsyncCallback(TcpConnectCallback), null);  
             Console.WriteLine($"Incoming connection from {client.Client.RemoteEndPoint}...");
 
-            clientConnectCounter++;
-            Clients.Add(clientConnectCounter, new Client(clientConnectCounter, this));
+            ClientConnectCounter++;
+            Clients.Add(ClientConnectCounter, new Client(ClientConnectCounter, this));
 
             var cts = new CancellationTokenSource();
 
-            var task = Clients[clientConnectCounter]._tcp.ConnectAsync(client, clientConnectCounter, cts.Token);
+            var task = Clients[ClientConnectCounter]._tcp.ConnectAsync(client, ClientConnectCounter, cts.Token);
 
             Task.Delay(CallTimeout).ContinueWith(_ => cts.Cancel());
         }
@@ -119,27 +117,6 @@ namespace DiscountGeneratorService
             using (Packet packet = new Packet((int)ResponsePacket.Handshake))
             {
                 packet.Write(clientId);
-                packet.Write(toClient);
-
-                await SendTCPData(toClient, packet, ct);
-            }
-        }
-
-        public async Task GenerateAsync(int toClient, string msg, CancellationToken ct)
-        {
-            using (Packet packet = new Packet((int)ResponsePacket.Generate))
-            {
-                packet.Write(toClient);
-
-                await SendTCPData(toClient, packet, ct);
-            }
-        }
-
-        public async Task UseCodeAsync(int toClient, short discountValue, CancellationToken ct)
-        {
-            using (Packet packet = new Packet((int)ResponsePacket.UseCode))
-            {
-                packet.Write(discountValue);
                 packet.Write(toClient);
 
                 await SendTCPData(toClient, packet, ct);

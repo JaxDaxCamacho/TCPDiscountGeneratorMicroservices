@@ -1,11 +1,4 @@
-﻿using DiscountGeneratorService.Handlers;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
-using TCPLibrary;
+﻿using TCPLibrary;
 
 namespace DiscountGeneratorService.Interfaces
 {
@@ -13,10 +6,9 @@ namespace DiscountGeneratorService.Interfaces
     {
         const int readCap = 300;
 
-        public Task AddCodeFileToBeInserted(string code);
-        public Task AddCodeFileToBeActivated(string code);
-        public Dictionary<string, bool> ReadStoredCodesToMemory();
-        public List<string> InsertCodesIntoStorage(int forceCap = readCap);
-        public List<string> ProcessCodeActivations(int forceCap = readCap);
+        public Task AddCode(string code);
+        public Task<CodeDTO?> GetCode(string code);
+        public Task SaveCodes(string[] pendingCodes);
+        public bool ActivateCode(string CodeToActivate);
     }
 }

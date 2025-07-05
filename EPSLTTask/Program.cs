@@ -8,8 +8,7 @@ namespace DiscountGeneratorService
     class Program
     {
         static bool isRunning = false;
-        static int Ticks_Per_Sec = 10;
-        static int MS_Per_Tic = 100;
+        static int MS_Per_Tic = 250;
         static int Port = 19888;
         static IDiscountGenerator _discounteredGenerator;
 
@@ -28,21 +27,21 @@ namespace DiscountGeneratorService
 
             _discounteredGenerator = serviceProvider.GetRequiredService<IDiscountGenerator>();
 
-            Thread mainThread = new Thread(new ThreadStart(MainThread));
+            Thread storageThread = new Thread(new ThreadStart(StorageThread));
             isRunning = true;
 
-            mainThread.Start();
+            storageThread.Start();
         }
 
         static void ConfigureServices(IServiceCollection services)
         {
             services.AddSingleton<IFileStorageHandler, FileStorageHandler>();
-            services.AddTransient<IDiscountGenerator, EPSDiscountGenerator>();
+            services.AddSingleton<IDiscountGenerator, EPSDiscountGenerator>();
 
             services.AddTransient<App>();
         }
 
-        static void MainThread()
+        static void StorageThread()
         {
             DateTime nextLoop = DateTime.Now;
 
@@ -51,7 +50,7 @@ namespace DiscountGeneratorService
                 while (nextLoop < DateTime.Now)
                 {
 
-                    _discounteredGenerator.Loop();
+                    _discounteredGenerator.FileStorageLoop();
                     nextLoop = nextLoop.AddMilliseconds(MS_Per_Tic);
 
                     if (nextLoop > DateTime.Now)

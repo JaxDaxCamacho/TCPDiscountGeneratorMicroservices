@@ -156,7 +156,7 @@ namespace DiscountGeneratorService
                                 _discountGenerator.ErrorAsync(_id, $"{codeToActivate} is not a valid code", cts.Token);
                                 break;
                             }
-                            _discountGenerator.RequestHandler.HandleUseCodeAsync(_id, codeToActivate, cts.Token);
+                            _discountGenerator.RequestHandler.HandleActivateCodeAsync(_id, codeToActivate, cts.Token);
                             break;
                     }
                 }

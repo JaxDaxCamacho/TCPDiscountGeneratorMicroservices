@@ -1,10 +1,6 @@
 ﻿using DiscountGeneratorService.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Reflection.Metadata;
 using System.Text;
+using TCPLibrary;
 using System.Threading.Tasks;
 
 namespace DiscountGeneratorService.Handlers
@@ -12,191 +8,116 @@ namespace DiscountGeneratorService.Handlers
     public class FileStorageHandler : IFileStorageHandler
     {
         string _path;
-        const string pendingCodesDir = "CodesToBeInserted";
-        const string pendingActivationsDir = "CodesToBeActivated";
-        const string activeCodesText = "ActiveCodes.txt";
-        const string usedCodesText = "UsedCodes.txt";
-        
-        public FileStorageHandler() 
+        const string ActiveCodesDir = "CodesToBeInserted";
+        Dictionary<string, bool> _cachedCodes;
+
+        public FileStorageHandler()
         {
             _path = Directory.GetCurrentDirectory();
-            var pendingCodesPath = $"{_path}/{pendingCodesDir}";
-            if (!Directory.Exists(pendingCodesPath)) Directory.CreateDirectory(pendingCodesPath);
-
-            var pendingActivationsPath = $"{_path}/{pendingActivationsDir}";
-            if (!Directory.Exists(pendingActivationsPath)) Directory.CreateDirectory(pendingActivationsPath);
-
-            using (FileStream fs = File.Create(activeCodesText)) { }
-            using (FileStream fs = File.Create(usedCodesText)) { }
+            var activeCodesPath = $"{_path}/{ActiveCodesDir}";
+            if (!Directory.Exists(activeCodesPath)) Directory.CreateDirectory(activeCodesPath);
+            _cachedCodes = new Dictionary<string, bool>();
         }
 
-        public async Task AddCodeFileToBeInserted(string code)
+        public async Task AddCode(string code)
         {
             string fileName = Guid.NewGuid().ToString() + ".txt"; // or any other extension
-            string fullPath = Path.Combine(pendingCodesDir, fileName);
+            string fullPath = Path.Combine(ActiveCodesDir, fileName);
 
             // Write the content to the file
             await File.WriteAllTextAsync(fullPath, code, Encoding.UTF8);
 
-            Console.WriteLine($"Code pending: {code}");
+            Console.WriteLine($"Code activated: {code}");
         }
 
-        public async Task AddCodeFileToBeActivated(string code)
+        public async Task<CodeDTO?> GetCode(string code)
         {
-            string fileName = Guid.NewGuid().ToString() + ".txt"; // or any other extension
-            string fullPath = Path.Combine(pendingActivationsDir, fileName);
+            if (_cachedCodes.TryGetValue(code, out var active)) return new CodeDTO(code, active);
 
-            // Write the content to the file
-            await File.WriteAllTextAsync(fullPath, code, Encoding.UTF8);
-
-            Console.WriteLine($"Code pending activation: {code}");
-        }
-
-        public Dictionary<string, bool> ReadStoredCodesToMemory()
-        {
-            var readCodes = new Dictionary<string, bool>();
-            if (!File.Exists(activeCodesText))
+            string[] files = Directory.GetFiles(ActiveCodesDir);
+            var _filepath = Path.Combine(ActiveCodesDir, code);
+            if (files.Contains(_filepath))
             {
-                Console.WriteLine("File not found.");
-                return readCodes;
-            }
-
-            var pendingcodes = Directory.GetFiles(pendingCodesDir);
-
-            if (pendingcodes.Length < 0)
-            {
-                InsertCodesIntoStorage(pendingcodes.Length);
-            }
-
-            var codes = File.ReadAllLines(activeCodesText);
-
-            foreach (var code in codes)
-            {
-                readCodes[code] = true;
-            }
-
-            var pendingActivations = Directory.GetFiles(pendingActivationsDir);
-
-            if (pendingActivations.Length < 0)
-            {
-                ProcessCodeActivations(pendingActivations.Length);
-            }
-
-            var usedcodes = File.ReadAllLines(usedCodesText);
-
-            foreach (var code in usedcodes)
-            {
-                if (readCodes.ContainsKey(code))
+                try
                 {
-                    readCodes[code] = false;
+                    string fileContent = await File.ReadAllTextAsync(_filepath);
+                    if (fileContent != "true")
+                    {
+                        _cachedCodes.Add(code, false);
+                        return new CodeDTO(code,false);
+                    }
+                    else
+                    {
+                        _cachedCodes.Add(code, true);
+                        return new CodeDTO(code, true);
+                    }
+                }
+                catch (IOException)
+                {
+                    Console.WriteLine($"Could not read {code} due To IOException");
                 }
             }
-
-            return readCodes;
+            return null;
         }
 
-        public List<string> InsertCodesIntoStorage(int forceCap)
+        public async Task SaveCodes(string[] pendingCodes)
         {
-            var codes = Directory.GetFiles(pendingCodesDir);
-                        
-            if (codes.Length == 0)
+            foreach (var code in pendingCodes)
             {
-                return new List<string>();
+                var _filepath = Path.Combine(ActiveCodesDir, code);
+                await File.WriteAllTextAsync(_filepath, "true");
             }
-
-            var codesToProcess = new List<string>();
-
-            if (codes.Length < forceCap)
-            {
-                codesToProcess = codes.Take(codes.Length).ToList();
-            }
-            else
-            {
-                codesToProcess = codes.Take(forceCap).ToList();
-            }
-
-            using var outputStream = new StreamWriter(activeCodesText, append: true, encoding: Encoding.UTF8);
-
-            foreach (var code in codesToProcess)
-            {
-                string content = File.ReadAllText(code);
-
-                outputStream.WriteLine(content);
-            }
-
-            outputStream.Flush();
-
-            foreach (var file in codesToProcess)
-            {
-                File.Delete(file);
-            }
-
-            Console.WriteLine($"Processed {codesToProcess.Count} codes into {activeCodesText}");
-            return codesToProcess;
+            if(pendingCodes.Length > 0) Console.WriteLine($"Processed {pendingCodes.Count()} codes into {ActiveCodesDir}");
         }
 
-        public List<string> ProcessCodeActivations(int forceCap)
+        public bool ActivateCode(string codeToActivate)
         {
-            var files = Directory.GetFiles(pendingActivationsDir);
+            if (_cachedCodes.TryGetValue(codeToActivate, out var active)) _cachedCodes[codeToActivate] = false;
 
-            if (files.Length == 0)
+            var files = Directory.GetFiles(ActiveCodesDir);
+
+            var _filepath = Path.Combine(ActiveCodesDir, codeToActivate);
+
+            var fileToActivate = files.FirstOrDefault(_filepath);
+
+            if (fileToActivate != null)
             {
-                return new List<string>(); ;
+                try
+                {
+                    string contents = File.ReadAllText(fileToActivate);
+                    if (contents != "true")
+                    {
+                        Console.WriteLine($"{codeToActivate} has already been activated");
+                        return false;
+                    }
+                    else
+                    {
+                        File.WriteAllText(fileToActivate, "false");
+                        return true;
+                    }
+                }
+                catch (IOException)
+                {
+                    Console.WriteLine($"Could not read {fileToActivate} due To IOException");
+                }
             }
-
-            var codesToActivate = new List<string>();
-
-            if (files.Length < forceCap)
-            {
-                codesToActivate = files.Take(files.Length).ToList();
-            }
-            else
-            {
-                codesToActivate = files.Take(forceCap).ToList();
-            }
-
-            using var outputStream = new StreamWriter(usedCodesText, append: true, encoding: Encoding.UTF8);
-
-            foreach (var file in files)
-            {
-                string content = File.ReadAllText(file);
-
-                outputStream.WriteLine(content);
-            }
-
-            outputStream.Flush();
-
-            foreach (var file in files)
-            {
-                File.Delete(file);
-            }
-
-            Console.WriteLine($"Processed {codesToActivate.Count} code activations");
-            return codesToActivate;
+            return false;
         }
 
         public void ClearAllData()
         {
-            DirectoryInfo di = new DirectoryInfo($"{_path}/{pendingCodesDir}");
-            foreach (FileInfo file in di.GetFiles())
-            { file.Delete(); }
-
-            DirectoryInfo di2 = new DirectoryInfo($"{_path}/{pendingActivationsDir}");
-            foreach (FileInfo file in di2.GetFiles())
-            { file.Delete(); }
-
-            File.Delete(activeCodesText);
-            File.Delete(usedCodesText);
+            var files = Directory.GetFiles(ActiveCodesDir);
+            foreach (var file in files)
+            {
+                File.Delete(file);
+            }
         }
 
         public void ForcePath(string path)
         {
             _path = path;
-            var pendingCodesPath = $"{_path}/{pendingCodesDir}";
+            var pendingCodesPath = $"{_path}/{ActiveCodesDir}";
             if (!Directory.Exists(pendingCodesPath)) Directory.CreateDirectory(pendingCodesPath);
-
-            var pendingActivationsPath = $"{_path}/{pendingActivationsDir}";
-            if (!Directory.Exists(pendingActivationsPath)) Directory.CreateDirectory(pendingActivationsPath);
         }
     }
 }
