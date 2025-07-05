@@ -25,6 +25,9 @@ namespace DiscountGeneratorService.Handlers
 
             var pendingActivationsPath = $"{_path}/{pendingActivationsDir}";
             if (!Directory.Exists(pendingActivationsPath)) Directory.CreateDirectory(pendingActivationsPath);
+
+            using (FileStream fs = File.Create(activeCodesText)) { }
+            using (FileStream fs = File.Create(usedCodesText)) { }
         }
 
         public async Task AddCodeFileToBeInserted(string code)
