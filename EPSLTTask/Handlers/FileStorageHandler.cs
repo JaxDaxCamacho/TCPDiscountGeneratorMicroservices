@@ -8,8 +8,8 @@ namespace DiscountGeneratorService.Handlers
     public class FileStorageHandler : IFileStorageHandler
     {
         string _path;
-        const string ActiveCodesDir = "CodesToBeInserted";
-        Dictionary<string, bool> _cachedCodes;
+        string ActiveCodesDir = "CodesToBeInserted";
+        public Dictionary<string, bool> _cachedCodes;
 
         public FileStorageHandler()
         {
@@ -111,13 +111,14 @@ namespace DiscountGeneratorService.Handlers
             {
                 File.Delete(file);
             }
+            _cachedCodes = new Dictionary<string, bool>();
         }
 
         public void ForcePath(string path)
         {
-            _path = path;
-            var pendingCodesPath = $"{_path}/{ActiveCodesDir}";
-            if (!Directory.Exists(pendingCodesPath)) Directory.CreateDirectory(pendingCodesPath);
+            _path = Path.Combine(Directory.GetCurrentDirectory(), path);
+            var activeCodesPath = $"{_path}/{ActiveCodesDir}";
+            if (!Directory.Exists(activeCodesPath)) Directory.CreateDirectory(activeCodesPath);
         }
     }
 }

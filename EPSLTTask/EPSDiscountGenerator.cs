@@ -25,8 +25,8 @@ namespace DiscountGeneratorService
 
         int ClientConnectCounter = 0;
 
-        List<string> PendingCodes = new List<string>();
-        List<string> PendingActivations = new List<string>();
+        public List<string> PendingCodes = new List<string>();
+        public List<string> PendingActivations = new List<string>();
 
         public DiscountCodeHandler RequestHandler { get; }
 

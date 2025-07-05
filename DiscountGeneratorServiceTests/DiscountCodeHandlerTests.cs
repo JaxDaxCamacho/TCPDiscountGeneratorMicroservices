@@ -13,8 +13,9 @@ namespace DiscountGeneratorServiceTests
         [DataRow((short)300, (short)7, 1)]
         [DataRow((short)2000, (short)8, 2)]
         [DataRow((short)3000, (short)7, 3)]
-        public async Task DiscountCodeHandler_GenerateCodes_GoldenPath(short numberOfCodes, short lengthOfCodes, int testCase)
+        public async Task DiscountCodeHandler_GenerateCodes_CreatesPendingCodes_GoldenPath(short numberOfCodes, short lengthOfCodes, int testCase)
         {
+
             // Arrange
             CancellationTokenSource cts = new CancellationTokenSource();
             var testFileGenerator = new FileStorageHandler();
@@ -27,17 +28,16 @@ namespace DiscountGeneratorServiceTests
             //Act
 
             await testDiscountGenerator.RequestHandler.HandleGenerateAsync(1, numberOfCodes, lengthOfCodes, cts.Token);
-            Thread.Sleep(TimeSpan.FromSeconds(2));
             //Assert
-            //testDiscountGenerator.Codes.Should().HaveCount(numberOfCodes);
-            //testDiscountGenerator.Codes.First().Key.Should().HaveLength(lengthOfCodes);
+            testDiscountGenerator.PendingCodes.Count().Should().Be(numberOfCodes);
+            testDiscountGenerator.PendingCodes.First().Should().HaveLength(lengthOfCodes);
             testFileGenerator.ClearAllData();
         }
 
         [TestMethod]
         [TestCategory("Unit")]
         [DataRow("testcod")]
-        public async Task DiscountCodeHandler_UseCode_GoldenPath(string codeToActivate)
+        public async Task DiscountCodeHandler_UseCode_CreatesPendingActivation_GoldenPath(string codeToActivate)
         {
             // Arrange
             CancellationTokenSource cts = new CancellationTokenSource();
@@ -47,15 +47,14 @@ namespace DiscountGeneratorServiceTests
             var testClient = new Client(1, testDiscountGenerator);
             testDiscountGenerator.Clients.Add(1, testClient);
 
-            //testDiscountGenerator.Codes[codeToActivate] = true;
+            testFileGenerator._cachedCodes[codeToActivate] = true;
 
-            ////Act
+            //Act
 
-            //await testDiscountGenerator.RequestHandler.HandleUseCodeAsync(1, codeToActivate, cts.Token);
-            
-            ////Assert
-            //testDiscountGenerator.Codes.Should().ContainKey(codeToActivate);
-            //testDiscountGenerator.Codes[codeToActivate].Should().Be(false);
+            await testDiscountGenerator.RequestHandler.HandleActivateCodeAsync(1, codeToActivate, cts.Token);
+
+            //Assert
+            testDiscountGenerator.PendingActivations.Should().Contain(codeToActivate);
             testFileGenerator.ClearAllData();
         }
 
@@ -72,7 +71,7 @@ namespace DiscountGeneratorServiceTests
             var testClient = new Client(1, testDiscountGenerator);
             testDiscountGenerator.Clients.Add(1, testClient);
 
-            //testDiscountGenerator.Codes[codeToActivate] = false;
+            testFileGenerator._cachedCodes[codeToActivate] = false;
 
             //Act
             var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
