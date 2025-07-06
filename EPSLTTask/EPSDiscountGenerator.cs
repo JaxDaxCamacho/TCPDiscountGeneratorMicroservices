@@ -3,6 +3,7 @@ using DiscountGeneratorService.Interfaces;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection.Emit;
+using System.Threading.Tasks;
 using TCPLibrary;
 
 namespace DiscountGeneratorService
@@ -26,7 +27,7 @@ namespace DiscountGeneratorService
         int ClientConnectCounter = 0;
 
         public List<string> PendingCodes = new List<string>();
-        public List<string> PendingActivations = new List<string>();
+        public Dictionary<string,int> PendingActivations = new Dictionary<string, int>();
 
         public DiscountCodeHandler RequestHandler { get; }
 
@@ -55,6 +56,7 @@ namespace DiscountGeneratorService
 
         public void FileStorageLoop()
         {
+            var cts = new CancellationTokenSource();
             if (PendingCodes.Count > 0)
             {
                 var pageSize = PendingCodes.Count > PageSize ? PageSize : PendingCodes.Count;
@@ -67,26 +69,31 @@ namespace DiscountGeneratorService
             {
                 var pageSize = PendingActivations.Count > PageSize ? PageSize : PendingActivations.Count;
                 var codesToActivatePage = PendingActivations.TakeLast(pageSize);
-                foreach (string code in codesToActivatePage)
+                foreach (var codeClientPair in codesToActivatePage)
                 {
-                    _fileStorageHandler.ActivateCode(code);
+                    var success = _fileStorageHandler.ActivateCode(codeClientPair.Key);
+                    if (success) SuccessAsync(codeClientPair.Value, cts.Token).GetAwaiter().GetResult();
+                    else ErrorAsync(codeClientPair.Value, "Code is no longer valid", cts.Token).GetAwaiter().GetResult();
                 }
-                PendingActivations = PendingActivations.Except(codesToActivatePage).ToList();
+                PendingActivations = PendingActivations.Except(codesToActivatePage).ToDictionary();
             }
         }
 
         public void CommitPendingCode(string code)
         {
+            Console.WriteLine($"pending code {code}");
             PendingCodes.Add(code);
         }
 
-        public void CommitActivation(string code)
+        public void CommitActivation(string code, int clientId)
         {
-            PendingActivations.Add(code);
+            Console.WriteLine($"atempting activation on {code} by client {clientId}");
+            PendingActivations.Add(code, clientId);
         }
 
         public void CommitPendingCodes(string[] codes)
         {
+            Console.WriteLine($"inserted code batch: {string.Join("\n",codes)}");
             PendingCodes.AddRange(codes);
         }
 

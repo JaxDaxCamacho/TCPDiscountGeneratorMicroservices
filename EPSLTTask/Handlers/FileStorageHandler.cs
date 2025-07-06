@@ -92,6 +92,7 @@ namespace DiscountGeneratorService.Handlers
                     }
                     else
                     {
+                        Console.WriteLine($"{codeToActivate} was just activated");
                         File.WriteAllText(fileToActivate, "false");
                         return true;
                     }

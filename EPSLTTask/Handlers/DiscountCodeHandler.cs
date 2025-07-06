@@ -78,7 +78,7 @@ namespace DiscountGeneratorService.Handlers
                 if (storedCode.IsActive)
                 {
                     //Activation Code Logic
-                    _discountGenerator.CommitActivation(storedCode.Code);
+                    _discountGenerator.CommitActivation(storedCode.Code, _fromClient);
                     await _discountGenerator.SuccessAsync(_fromClient, ct);
                 }
                 else

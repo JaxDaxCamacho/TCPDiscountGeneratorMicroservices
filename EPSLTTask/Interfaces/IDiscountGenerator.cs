@@ -7,7 +7,7 @@ namespace DiscountGeneratorService.Interfaces
         public DiscountCodeHandler RequestHandler { get; }
         public void Start(int port);
         public void FileStorageLoop();
-        public void CommitActivation(string code);
+        public void CommitActivation(string code, int clientId);
         public void CommitPendingCodes(string[] codes);
         public void CommitPendingCode(string code);
         public Task HandshakeAsync(int toClient, int clientId, CancellationToken ct);
